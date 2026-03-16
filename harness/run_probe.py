@@ -20,15 +20,25 @@ PROBES = {
             "--repeat", "50",
             "--logical-n", str(1 << 20),
         ],
-    }
+    },
+    "global_stride_sweep_fixed_work": {
+        "src": ROOT / "probes" / "memory" / "global_stride_sweep_fixed_work.cu",
+        "exe": BUILD_DIR / ("global_stride_sweep_fixed_work.exe" if os.name == "nt" else "global_stride_sweep_fixed_work"),
+        "args": [
+            "--max-stride", "256",
+            "--block", "256",
+            "--grid", "256",
+            "--warmup", "10",
+            "--repeat", "30",
+            "--total-accesses", str(1 << 24),
+            "--total-elems", str(1 << 26),
+        ],
+    },
 }
 
 
 def detect_cuda_arch():
-    """
-    필요하면 나중에 장치별 자동화 가능.
-    지금은 RTX 3060 기준으로 sm_86 고정.
-    """
+    # RTX 3060 / RTX 3080 Ti Laptop both SM 86
     return "sm_86"
 
 
@@ -51,16 +61,22 @@ def build_probe(src_path: pathlib.Path, exe_path: pathlib.Path):
     subprocess.run(cmd, check=True)
 
 
+
 def run_probe(exe_path: pathlib.Path, args):
     cmd = [str(exe_path)] + args
     print("[run]", " ".join(cmd))
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.stdout.strip():
+        print(result.stdout)
 
     if result.stderr.strip():
         print("[stderr]")
         print(result.stderr)
 
-    print(result.stdout)
+    if result.returncode != 0:
+        raise RuntimeError(f"Probe failed with exit code {result.returncode}")
 
     try:
         return json.loads(result.stdout)
@@ -70,7 +86,17 @@ def run_probe(exe_path: pathlib.Path, args):
 
 
 def main():
-    probe_name = "global_stride_sweep"
+    probe_name = "global_stride_sweep_fixed_work"
+    if len(sys.argv) >= 2:
+        probe_name = sys.argv[1]
+
+    if probe_name not in PROBES:
+        print(f"Unknown probe: {probe_name}")
+        print("Available probes:")
+        for name in PROBES:
+            print("  -", name)
+        sys.exit(1)
+
     probe = PROBES[probe_name]
 
     build_probe(probe["src"], probe["exe"])
