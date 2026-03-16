@@ -38,10 +38,10 @@ static float run_once(float* d_data,
     CUDA_CHECK(cudaEventRecord(start));
     for (int i = 0; i < iters; ++i) {
         global_stride_sweep_kernel<<<grid_size, block_size>>>(d_data, stride, logical_n);
+        CUDA_CHECK(cudaGetLastError());
     }
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
-    CUDA_CHECK(cudaGetLastError());
 
     float ms = 0.0f;
     CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
@@ -52,16 +52,14 @@ static float run_once(float* d_data,
 }
 
 int main(int argc, char** argv) {
-    // Defaults
     int max_stride  = 256;
     int block_size  = 256;
     int grid_size   = 256;
     int warmup      = 10;
     int repeat      = 50;
-    int logical_n   = 1 << 20;     // number of logical threads worth of data points
-    int stride_mode = 0;           // 0 => powers of two, 1 => linear [1..max_stride]
+    int logical_n   = 1 << 20;
+    int stride_mode = 0;
 
-    // Simple CLI parsing
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         auto need_value = [&](const char* name) {
@@ -102,7 +100,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Allocate enough memory for worst-case stride.
     size_t total_elems = static_cast<size_t>(logical_n) * static_cast<size_t>(max_stride);
     size_t total_bytes = total_elems * sizeof(float);
 
@@ -110,7 +107,6 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMalloc(&d_data, total_bytes));
     CUDA_CHECK(cudaMemset(d_data, 0, total_bytes));
 
-    // Device info
     int device = 0;
     cudaDeviceProp prop{};
     CUDA_CHECK(cudaGetDevice(&device));
@@ -136,10 +132,12 @@ int main(int argc, char** argv) {
     std::printf("  \"results\": [\n");
 
     bool first = true;
+
     if (stride_mode == 0) {
         for (int stride = 1; stride <= max_stride; stride *= 2) {
             for (int i = 0; i < warmup; ++i) {
                 global_stride_sweep_kernel<<<grid_size, block_size>>>(d_data, stride, logical_n);
+                CUDA_CHECK(cudaGetLastError());
             }
             CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -153,6 +151,7 @@ int main(int argc, char** argv) {
         for (int stride = 1; stride <= max_stride; ++stride) {
             for (int i = 0; i < warmup; ++i) {
                 global_stride_sweep_kernel<<<grid_size, block_size>>>(d_data, stride, logical_n);
+                CUDA_CHECK(cudaGetLastError());
             }
             CUDA_CHECK(cudaDeviceSynchronize());
 
